@@ -1,91 +1,181 @@
 # BigDataSpark
 
-Анализ больших данных - лабораторная работа №2 - ETL реализованный с помощью Spark
+Лабораторная работа №2: ETL на Apache Spark (модель «звезда» в PostgreSQL и витрины в ClickHouse, бонус — Neo4j).
 
-## Инструкция по запуску
+## Требования
 
-Поднять контейнеры, проверить загрузку данных в PostgreSQL и выполнить джобы Spark (`star schema` → ClickHouse, опционально Neo4j) можно по пошаговой инструкции: **[INSTRUCTIONS.md](INSTRUCTIONS.md)**.
+- Docker и Docker Compose
+- ~6 ГБ свободной RAM для контейнеров
 
-Одним из самых популярных фреймворков для работы с Big Data является Apache Spark. Apache Spark - мощный фреймворк, который предлагает широкий набор функциональности для простого написания ETL-пайплайнов.
+## Структура проекта
 
-Что необходимо сделать? 
+```
+BigDataSpark/
+├── исходные данные/          # 10 CSV-файлов (10 000 строк)
+├── docker-compose.yml
+├── init/
+│   └── 01_init.sh            # таблица mock_data и загрузка CSV в PostgreSQL
+├── clickhouse-init/
+│   └── 01_create_tables.sql  # 6 таблиц отчётов в ClickHouse
+├── jobs/
+│   ├── etl_star_schema.py    # mock_data → звёздная схема в PostgreSQL
+│   ├── etl_clickhouse.py     # звёздная схема → 6 отчётов в ClickHouse
+│   └── etl_neo4j.py          # звёздная схема → 6 меток узлов в Neo4j (бонус)
+└── README.md
+```
 
-Необходимо реализовать ETL-пайплайн с помощью Spark, который трансформирует данные из источника (файлы mock_data.csv с номерами) в модель данных звезда в PostgreSQL, а затем на основе модели данных звезда создать ряд отчетов по данным в одной из NoSQL базах данных обязательно и в нескольких других опционально (будет бонусом). Каждый отчет представляет собой отдельную таблицу в NoSQL БД.
+## Шаг 1 — Запуск инфраструктуры
 
-Какие отчеты надо создать?
-1. Витрина продаж по продуктам
-Цель: Анализ выручки, количества продаж и популярности продуктов.
- - Топ-10 самых продаваемых продуктов.
- - Общая выручка по категориям продуктов.
- - Средний рейтинг и количество отзывов для каждого продукта.
-2. Витрина продаж по клиентам
-Цель: Анализ покупательского поведения и сегментация клиентов.
- - Топ-10 клиентов с наибольшей общей суммой покупок.
- - Распределение клиентов по странам.
- - Средний чек для каждого клиента.
-3. Витрина продаж по времени
-Цель: Анализ сезонности и трендов продаж.
- - Месячные и годовые тренды продаж.
- - Сравнение выручки за разные периоды.
- - Средний размер заказа по месяцам.
-4. Витрина продаж по магазинам
-Цель: Анализ эффективности магазинов.
- - Топ-5 магазинов с наибольшей выручкой.
- - Распределение продаж по городам и странам.
- - Средний чек для каждого магазина.
-5. Витрина продаж по поставщикам
-Цель: Анализ эффективности поставщиков.
- - Топ-5 поставщиков с наибольшей выручкой.
- - Средняя цена товаров от каждого поставщика.
- - Распределение продаж по странам поставщиков.
-6. Витрина качества продукции
-Цель: Анализ отзывов и рейтингов товаров.
- - Продукты с наивысшим и наименьшим рейтингом.
- - Корреляция между рейтингом и объемом продаж.
- - Продукты с наибольшим количеством отзывов.
+```bash
+docker compose up -d
+```
 
-В каких NoSQL БД должны быть эти отчеты:
-1. **Clickhouse** **(обязательно)**
-2. Cassandra (опционально, если будет реализация, то это бонус)
-3. Neo4J (опционально, если будет реализация, то это бонус)
-4. MongoDB (опционально, если будет реализация, то это бонус)
-5. Valkey (опционально, если будет реализация, то это бонус)
+Подождите ~30 секунд, пока инициализируются PostgreSQL, ClickHouse и Neo4j.  
+Контейнер `clickhouse-init` автоматически создаст 6 таблиц отчётов в ClickHouse.
 
-![Лабораторная работа №2](https://github.com/user-attachments/assets/2b854382-4c36-4542-a7fb-04fe82a6f6fa)
+Проверка контейнеров:
 
+```bash
+docker compose ps
+```
 
-Алгоритм:
+Проверка загрузки сырых данных (ожидается `10000`):
 
-1. Клонируете к себе этот репозиторий.
-2. Устанавливаете себе инструмент для работы с запросами SQL (рекомендую DBeaver).
-3. Устанавливаете базу данных PostgreSQL (рекомендую установку через docker).
-4. Устанавливаете Apache Spark (рекомендую установку через Docker. Для удобства написания кода на Python можно запустить вместе со JupyterNotebook. Для Java - подключить volume и собрать образ Docker, который будет запускать команду spark-submit с java jar-файлом при старте контейнера, сам jar файл собирается отдельно и кладется в подключенный volume)
-5. Скачиваете файлы с исходными данными mock_data( * ).csv, где ( * ) номера файлов. Всего 10 файлов, каждый по 1000 строк.
-6. Импортируете данные в БД PostgreSQL (например, через механизм импорта csv в DBeaver). Всего в таблице mock_data должно находиться 10000 строк из 10 файлов.
-7. Анализируете исходные данные с помощью запросов.
-8. Выявляете сущности фактов и измерений.
-9. Реализуете приложение на Spark, которое по аналогии с первой лабораторной работой перекладывает исходные данные из PostgreSQL в модель снежинку/звезда в PostgreSQL. (Убедитесь в коннективности Spark и PostgreSQL, настройте сеть между Spark и PostgreSQL, если используете Docker).
-10. Устанавливаете ClickHouse (рекомендую установку через Docker. Убедитесь в коннективности Spark и Clickhouse, настройте сеть между Spark и ClickHouse). **(обязательно)**
-11. Реализуете приложение на Spark, которое создаёт все 6 перечисленных выше отчетов в виде 6 отдельных таблиц в ClickHouse. **(обязательно)**
-12. Устанавливаете Cassandra (рекомендую установку через Docker. Убедитесь в коннективности Spark и Cassandra, настройте сеть между Spark и Cassandra). (опционально)
-13. Реализуете приложение на Spark, которое создаёт все 6 перечисленных выше отчетов в виде 6 отдельных таблиц в Cassandra. (опционально)
-14. Устанавливаете Neo4j (рекомендую установку через Docker. Убедитесь в коннективности Spark и Neo4j, настройте сеть между Spark и Neo4j). (опционально)
-15. Реализуете приложение на Spark, которое создаёт все 6 перечисленных выше отчетов в виде отдельных сущностей в Neo4j. (опционально)
-16. Устанавливаете MongoDB (рекомендую установку через Docker. Убедитесь в коннективности Spark и MongoDB, настройте сеть между Spark и MongoDB). (опционально)
-17. Реализуете приложение на Spark, которое создаёт все 6 перечисленных выше отчетов в виде 6 отдельных коллекций в MongoDB. (опционально)
-18. Устанавливаете Valkey (рекомендую установку через Docker. Убедитесь в коннективности Spark и Valkey, настройте сеть между Spark и Valkey). (опционально)
-19. Реализуете приложение на Spark, которое создаёт все 6 перечисленных выше отчетов в виде отдельных записей в Valkey. (опционально)
-20. Проверяете отчеты в каждой базе данных средствами языка самой БД (ClickHouse - SQL (DBeaver), Cassandra - CQL (DBeaver), Neo4J - Cipher (DBeaver), MongoDB - MQL (Compass), Valkey - redis-cli).
-21. Отправляете работу на проверку лаборантам.
+```bash
+docker exec postgres psql -U spark -d bigdata -c "SELECT COUNT(*) FROM mock_data;"
+```
 
-Что должно быть результатом работы?
+Проверка таблиц в ClickHouse (ожидается 6 таблиц):
 
-1. Репозиторий, в котором есть исходные данные mock_data().csv, где () номера файлов. Всего 10 файлов, каждый по 1000 строк.
-2. Файл docker-compose.yml с установкой PostgreSQL, Spark, ClickHouse **(обязательно)**, Cassandra (опционально), Neo4j (опционально), MongoDB (опционально), Valkey (опционально) и заполненными данными в PostgreSQL из файлов mock_data(*).csv.
-3. Инструкция, как запускать Spark-джобы для проверки лабораторной работы.
-4. Код Apache Spark трансформации данных из исходной модели в снежинку/звезду в PostgreSQL.
-5. Код Apache Spark трансформации данных из снежинки/звезды в отчеты в ClickHouse.
-6. Код Apache Spark трансформации данных из снежинки/звезды в отчеты в Cassandra.
-7. Код Apache Spark трансформации данных из снежинки/звезды в отчеты в Neo4j.
-8. Код Apache Spark трансформации данных из снежинки/звезды в отчеты в MongoDB.
-9. Код Apache Spark трансформации данных из снежинки/звезды в отчеты в Valkey.
+```bash
+docker exec clickhouse clickhouse-client --query "SHOW TABLES"
+```
+
+## Шаг 2 — Spark Job 1: построение звёздной схемы в PostgreSQL
+
+```bash
+docker exec spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 \
+  --packages org.postgresql:postgresql:42.7.3 \
+  /opt/spark/work-dir/etl_star_schema.py
+```
+
+Создаются таблицы:
+
+- `dim_customer`, `dim_seller`, `dim_product`
+- `dim_store`, `dim_supplier`, `dim_date`
+- `fact_sales`
+
+Проверка:
+
+```bash
+docker exec postgres psql -U spark -d bigdata -c "\dt"
+docker exec postgres psql -U spark -d bigdata -c "SELECT COUNT(*) FROM fact_sales;"
+```
+
+Ожидается `10000` строк в `fact_sales`.
+
+## Шаг 3 — Spark Job 2: отчёты в ClickHouse (обязательно)
+
+```bash
+docker exec spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 \
+  --packages org.postgresql:postgresql:42.7.3,com.clickhouse:clickhouse-jdbc:0.6.3 \
+  /opt/spark/work-dir/etl_clickhouse.py
+```
+
+Заполняются 6 таблиц:
+
+| Таблица | Витрина по ТЗ |
+|---------|----------------|
+| `report_products` | продажи по продуктам |
+| `report_customers` | продажи по клиентам |
+| `report_time` | продажи по времени |
+| `report_stores` | продажи по магазинам |
+| `report_suppliers` | продажи по поставщикам |
+| `report_quality` | качество продукции |
+
+Проверка (DBeaver: `localhost:8123`, драйвер ClickHouse) или из терминала:
+
+```bash
+docker exec clickhouse clickhouse-client --query "SELECT COUNT(*) FROM report_products;"
+docker exec clickhouse clickhouse-client --query "SELECT * FROM report_products ORDER BY sales_rank LIMIT 10;"
+```
+
+Примеры запросов по витринам:
+
+```sql
+-- Топ-10 продуктов по количеству продаж
+SELECT product_name, total_quantity, total_revenue
+FROM report_products ORDER BY sales_rank LIMIT 10;
+
+-- Выручка по категориям
+SELECT category, sum(total_revenue) AS revenue
+FROM report_products GROUP BY category ORDER BY revenue DESC;
+
+-- Топ-10 клиентов
+SELECT customer_name, country, total_spent
+FROM report_customers ORDER BY customer_rank LIMIT 10;
+
+-- Тренд по месяцам
+SELECT year, month, total_revenue, order_count
+FROM report_time ORDER BY year, month;
+
+-- Топ-5 магазинов
+SELECT store_name, city, country, total_revenue
+FROM report_stores ORDER BY revenue_rank LIMIT 5;
+
+-- Топ-5 поставщиков
+SELECT supplier_name, country, total_revenue
+FROM report_suppliers ORDER BY revenue_rank LIMIT 5;
+
+-- Продукты с лучшим рейтингом
+SELECT product_name, avg_rating, review_count, total_sales
+FROM report_quality ORDER BY rating_rank LIMIT 10;
+```
+
+## Шаг 4 — Spark Job 3: отчёты в Neo4j (бонус)
+
+```bash
+docker exec spark-master /opt/spark/bin/spark-submit \
+  --master spark://spark-master:7077 \
+  --packages org.postgresql:postgresql:42.7.3,org.neo4j:neo4j-connector-apache-spark_2.12:5.3.2_for_spark_3 \
+  /opt/spark/work-dir/etl_neo4j.py
+```
+
+Создаются метки узлов: `:ProductReport`, `:CustomerReport`, `:TimeReport`, `:StoreReport`, `:SupplierReport`, `:QualityReport`, а также связи `:SOLD_IN` и `:SUPPLIED_BY`.
+
+Neo4j Browser: [http://localhost:7474](http://localhost:7474) (логин `neo4j` / `neo4j123`).
+
+```cypher
+MATCH (n) RETURN labels(n)[0] AS label, count(n) AS count ORDER BY label;
+
+MATCH (p:ProductReport)
+RETURN p.product_name, p.total_quantity, p.total_revenue
+ORDER BY p.sales_rank ASC LIMIT 10;
+
+MATCH (p:ProductReport)-[r:SOLD_IN]->(s:StoreReport)
+RETURN p.product_name, s.store_name, r.revenue
+ORDER BY r.revenue DESC LIMIT 10;
+```
+
+## Подключение через DBeaver
+
+| БД | Host | Port | User | Password | Database |
+|----|------|------|------|----------|----------|
+| PostgreSQL | localhost | 5432 | spark | spark123 | bigdata |
+| ClickHouse | localhost | 8123 | — | — | default |
+
+Neo4j Browser: http://localhost:7474
+
+## Остановка
+
+```bash
+docker compose down
+```
+
+С удалением данных:
+
+```bash
+docker compose down -v
+```

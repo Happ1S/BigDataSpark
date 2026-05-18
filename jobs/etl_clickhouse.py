@@ -1,3 +1,4 @@
+import base64
 import urllib.request
 import urllib.error
 from pyspark.sql import SparkSession
@@ -17,15 +18,24 @@ PG_PROPS = {
     "driver": "org.postgresql.Driver"
 }
 
-CH_URL  = "jdbc:clickhouse://clickhouse:8123/default"
+CH_USER = "default"
+CH_PASSWORD = "spark123"
+CH_URL = "jdbc:clickhouse://clickhouse:8123/default"
 CH_PROPS = {
-    "driver": "com.clickhouse.jdbc.ClickHouseDriver"
+    "driver": "com.clickhouse.jdbc.ClickHouseDriver",
+    "user": CH_USER,
+    "password": CH_PASSWORD,
 }
 CH_HTTP = "http://clickhouse:8123/"
+CH_AUTH = base64.b64encode(f"{CH_USER}:{CH_PASSWORD}".encode()).decode()
 
 
 def ch_exec(sql: str):
-    req = urllib.request.Request(CH_HTTP, data=sql.encode())
+    req = urllib.request.Request(
+        CH_HTTP,
+        data=sql.encode(),
+        headers={"Authorization": f"Basic {CH_AUTH}"},
+    )
     try:
         with urllib.request.urlopen(req) as resp:
             resp.read()

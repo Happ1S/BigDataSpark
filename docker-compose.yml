@@ -63,8 +63,11 @@ services:
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
 
   clickhouse:
-    image: clickhouse/clickhouse-server:24
+    image: clickhouse/clickhouse-server:24.8
     container_name: clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: spark123
     ports:
       - "8123:8123"
       - "9000:9000"
@@ -83,7 +86,7 @@ services:
       retries: 5
 
   clickhouse-init:
-    image: clickhouse/clickhouse-client:24
+    image: clickhouse/clickhouse-server:24.8
     container_name: clickhouse-init
     depends_on:
       clickhouse:
